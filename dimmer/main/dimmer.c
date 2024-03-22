@@ -6,6 +6,13 @@
 #include "esp_http_server.h"
 #include "driver/ledc.h"
 
+extern const char index_start[] asm("_binary_index_html_start");
+extern const char index_end[] asm("_binary_index_html_end");
+extern const char chroma_start[] asm("_binary_chroma_png_start");
+extern const char chroma_end[] asm("_binary_chroma_png_end");
+extern const char favicon_ico_start[] asm("_binary_favicon_ico_start");
+extern const char favicon_ico_end[] asm("_binary_favicon_ico_end");
+
 #define LEDC_TIMER LEDC_TIMER_0
 #define LEDC_MODE LEDC_HIGH_SPEED_MODE
 #define LEDC_OUTPUT_R 26
@@ -73,8 +80,30 @@ void update_leds()
     ledc_update_duty(LEDC_MODE, LEDC_CHANNEL_B);
 }
 
+esp_err_t home_get_handler(httpd_req_t *req)
+{
+    httpd_resp_set_hdr(req, "Content-Type", "text/html");
+    httpd_resp_send(req, index_start, index_end - index_start);
+    return ESP_OK;
+}
+
+esp_err_t chroma_get_handler(httpd_req_t *req)
+{
+    httpd_resp_set_hdr(req, "Content-Type", "image/png");
+    httpd_resp_send(req, chroma_start, chroma_end - chroma_start);
+    return ESP_OK;
+}
+
+esp_err_t favicon_get_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "image/x-icon");
+    httpd_resp_send(req, favicon_ico_start, favicon_ico_end - favicon_ico_start);
+    return ESP_OK;
+}
+
 esp_err_t api_get_handler(httpd_req_t *req)
 {
+    httpd_resp_set_hdr(req, "Content-Type", "application/json");
     char* buf;
     size_t buf_len;
     buf_len = httpd_req_get_url_query_len(req) + 1;
@@ -89,9 +118,6 @@ esp_err_t api_get_handler(httpd_req_t *req)
         }
         free(buf);
     }
-
-    httpd_resp_set_hdr(req, "Content-Type", "application/json");
-
     char res[64];
     sprintf(res, "{ \"r\": %d, \"g\": %d, \"b\": %d }", led_r, led_g, led_b);
     httpd_resp_send(req, res, strlen(res));
@@ -104,12 +130,30 @@ void web_server_init()
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     if (httpd_start(&server, &config) == ESP_OK) {
-        httpd_uri_t uri = {
+        httpd_uri_t home = {
             .uri = "/",
+            .method = HTTP_GET,
+            .handler = home_get_handler,
+        };
+        httpd_uri_t chroma = {
+            .uri = "/chroma.png",
+            .method = HTTP_GET,
+            .handler = chroma_get_handler,
+        };
+        httpd_uri_t favicon = {
+            .uri = "/favicon.ico",
+            .method = HTTP_GET,
+            .handler = favicon_get_handler,
+        };
+        httpd_uri_t api = {
+            .uri = "/api",
             .method = HTTP_GET,
             .handler = api_get_handler,
         };
-        httpd_register_uri_handler(server, &uri);
+        httpd_register_uri_handler(server, &home);
+        httpd_register_uri_handler(server, &chroma);
+        httpd_register_uri_handler(server, &favicon);
+        httpd_register_uri_handler(server, &api);
     }
 }
 
